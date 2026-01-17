@@ -1,0 +1,114 @@
+5. Video process_based_architecture
+=============================================
+Transcation Internals (Before going to proccessbased)
+=========================================================
+->what is transcation (with respect to postgtesql)
+what is transcation:transcation measns it is unit of work ,which makes changes to data/dada defination that means not only data structure (unit of work will call transaction)
+->transaction has 3 status level 
+1.un commited (un completed)
+2.commited (completed)
+3.Roll back  (tcl language )->work completed but i am taking the changes reverse 
+->out of this three rollback is out of scope SO WE have either uncommited or commited  transcation 
+>What ever the transction happening first it will be in wal_buffers(shared_buffer) once transction completd(your query execution completd ) we will call this commited and after completdibg the transction this information will be tracked in clogbuffers  immidieatily all the commited trasction  will be recored into one file  i.e  is wal file (write ahed to log) file 
+->wal files are for future purpose in case of for future purpose incase of replication/pitr or crash recovery purpose 
+->now all commited transaction recored in wal file but what is the size of wal fike each wal file size is 16MB  so for every 16MB size new wal file wil be created 
+->all the wal files will be stored under one directory that directory name is pg_wal directory (pg_wal directory located under Data directory )
+->How many wal file can fit into wal directory at a time 1Gb size of wal files can store under pg_wal that means pg_wal directory default capacity 1GB that means at atime 64 wal file can exist if 65 wal file come then 1st wal file will be removed 
+->if old wal files removed stright forward no impacton running instance becausse those are already complted so no impacet when will impact when future purpose like replication and pitr at that time we need old wal files so for safe side archive mode(arachive mode copy wal file to archive directory) immdieatily no auto cleanup for archive files we need to clean manually and any time we can keep it (15 days or 1 month we can keep old archive files actually how much space we have that we have standard according to thatwe can store) 
+->q.Can we increse wal file size(oracle redolog ) we can incrse if reuired wal file size 16MB to bigger value only one time we can do that to duing database initilization only that means for the first time we are intializing services that time default data files and configuration files generated that time only i can increse the value 
+->we need to run inidb utility with  -- wal-segsize [ -X]=1GB like that 
+q.one more guy ask can we increse Pg_wal size:default 1GB : we can increse capacity alsoo that is wal_keep_size in postgresql.conf 
+->Until postgresql 12  this parameter name is max_wal_keep_segments=64 (means 64 * 16=1024 means 1GB now wal_keep_size=1024) earlier no of files now just size 
+-
+
+emp(eno,ename)    :[1, ram]
+                   [2, sam]
+                   [3,bheem]
+insert into emp values();
+upfate emp set  no=10 where no=1;
+->in above which actual data and which is transaction data :ans is insert update and delete are transactions 1,sam and 2,bheem this are data when ever we are handling the data data will be in one place and transactiion in one place 
+Transaction
+   ↓
+WAL Record generated
+   ↓
+WAL Buffers (Shared Memory)
+   ↓
+WAL Writer / Backend
+   ↓
+WAL Segment Files (pg_wal/)
+
+->auto clean up only for pg_wal 
+| Feature      | pg_wal                | WAL Archive        |
+| ------------ | --------------------- | ------------------ |
+| Purpose      | Active WAL for DB     | Long-term recovery |
+| Location     | Inside PGDATA         | External directory |
+| Auto cleanup | Yes (with conditions) | ❌ No (manual)      |
+| Needed for   | Crash & replication   | PITR               |
+| Risk         | Disk full             | Archive disk full  |
+
+                        3.PROCESS BASED ARCHITECTUR
+============================================================================================
+->In operating system level to do the work we have a workers we call that workers as  process (operation system terminology)
+->like we are calling people with difeent names based on their proffession ,in the same manner we have in os level 
+->by default we will start only postgresql server services using postmaster process 
+->postmaster will stert new child processes same as oracle if we start pmon (it will come s man read write default )
+1.postmaster : To stary and stop /reload/restart services postgres
+2.writer/wal writer process
+3.bg writer process 
+4.checkpointer process 
+5.stats collectorprocess (from postgresqk 15 onwards not there 
+6.autovaccum launcer proceesss(semi optinal if we cannot required we can disable it  ,when ever you start postmaster it will come and default is on ,if it is not required we can disable it )
+7.logical replication process
+*********** 
+->this 7 are mandatory processes( we cannot disable if we do shutdown it will gone if start then all staty once postmater on thosse 6 will come ) 
+->below are optional processes (it means if required then only we will enable if not required we can do disable)
+
+8.archiver process 
+9.wal sender 
+10wal_reciver
+11.logger process 
+
+->by default we are starinf only postmaster but it wil stert few child processes 
+->every time not staty all process default postmaster start top 7 only 
+6️⃣ Quick Memory Trick 🧠
+
+C B W A A L R
+
+Checkpointer
+
+Background writer
+
+WAL writer
+
+Autovacuum launcher
+
+Archiver
+
+Logger
+
+Replication			
+
+
+->Storage layer is buttom layer 
+1.presantation layer
+2.application layer 
+3.network
+4.operating system layer 
+5.storahe layer 
+
+
+
+
+->here os level measns memory 
+->in postgres mail memory share_bufferes,walbuffers ,clog buffers 
+->->in storage layer :(data directory )
+  to store actual data(1,ram,2, sam) we have one folder i.e is base directory and pg_wal,pg_tablespace_auditlog(remaining all are configuration )
+->we have emp table in emp table we have data(1, ram ),(2, sam ) if any one execute update operayion it will go to wal_buffers (update set no =100 where no=1;(this is transaction)when ever we are executing postgresql default auto commit on that means when ever we are entering automatically query execution completed then where it will track (it will track in clog bufffers like transaction  1 like that it will mark now transaction completed then it will go to pg_wal directory one of the file it write in to one wal file it will write now transaction writing in wal it is ok but what about data immdiatly according to transactoon resapctive data it will not change in disk directly it will go to shared_buffers (storage level changes will not happen,if happen data file coroption will be ocue ,any database never change directly in disk )it will go to shared buffers now here old is (1,ram) new is (100,ram) now in shared buffers we have both old and new as transaction default auto commit no option for us (even though once transcation done we cannot rollback in postgres),in disk (hardisk contain no of blocks extensions ,segements there we are writing somethingmeasns area in disk or space we called page) and area in memory we called buffer now in shared_buffers old data and new data is there here both are not be in same buffer old in one buffer and new in one bufffer niw my completed tranction write into wal file who will write (wal writer process) this process write all completed transction into wal file ,noe modified data(firty buffer(100,ram) it will flush (modified data or my change is done 1, ram to 100 ram) to disk (base directory ) ,flushing dirty bufferes from share_buffers to data file or disk we have a  process called bg_writer(baground writer) it will flush every 200ms  that means there is no lag 
+->who is the respomsible for compltee above operation postgres process(for every query one process will create )process will responce for complete end to end flow( data copirng disk to buffer ) 
+->one guy ask that i want flush more than this then we have one more process(for data flushing every 5mins  still any dirty buffers existed it will flush to disk data file i.e checkpointer) checkpoint processe on top of bg writer every 5min it will flush pending (for safe side) and we can increse size also i.e(checkpoint_timout paramaeett)
+->my optimzer will generate best least coss  execution based on statastics ( here who woll updata tha stastics) ->stats collector process will updatae the statastics on top of actual data it will wokk(like these many inserted,these many updated,these many deleted  like that complete informaytion on data directory it will work) later postgresql give one option to automate maintaince_activity (vacccum and anaalyze)enabling autovacuum=on(thoses opration also perform on data directory only that process  name is autovaccum launcher proceess and one more process for future purpose we have one process for logical replication that is logiacl replication launcher ( not mandatory but they made it mandatort proceeds default on )
+->one guy ask that my pg_wal is crutical then we can make a directory thatis archive directory ( dont create archive directory under data dirctory if we keep in dd if something went in dd then how we can do pitr ->so archive directory keep in separate place(so files will copied fromm pg_wal to archive directory)for this archiver process resploncible
+
+->one more guy ask i want to capture who connected ,when connectd ,why connected ,what query executed,how log ,which ip,which psql,pg_admin every thing (to capture )this we have to enable auditlog (capture by logger process(log)
+->one more came and ask i want to maintain replication 
+ex:serve1 and server 2 is there ( they are planning to build the reeplication for both serbers)and definetly they need to exchange tha data (from one to two ) then only both keep in sync but how the copy will happen ( from msater side one process is thesre that is wal_sender in standby wal reciver is there ) ,wal sender and wal reciver conceptcomes undnder during relication 
